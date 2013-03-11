@@ -66,4 +66,21 @@ class StatsHandler
     {
         return $this->failed;
     }
+
+    public function toString()
+    {
+        $spiderId = $this->getSpiderId();
+        $queued = $this->getQueued();
+        $filtered = $this->getFiltered();
+        $failed = $this->getFailed();
+
+        $string = '';
+
+        $string .= "\n\nSPIDER ID: " . $spiderId;
+        $string .= "\n  ENQUEUED:  " . count($queued);
+        $string .= "\n  SKIPPED:   " . count($filtered);
+        $string .= "\n  FAILED:    " . count($failed);
+
+        return $string;
+    }
 }

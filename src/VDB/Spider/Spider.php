@@ -2,7 +2,12 @@
 namespace VDB\Spider;
 
 use Exception;
+use Guzzle\Http\Message\Response;
 use Guzzle\Http\Url;
+use Guzzle\Parser\ParserRegistry;
+use React\Dns\Resolver\Factory as DnsResolverFactory;
+use React\EventLoop\Factory as EventLoopFactory;
+use React\HttpClient\Factory as HttpClientFactory;
 use Symfony\Component\EventDispatcher\Event;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -18,6 +23,7 @@ use VDB\Spider\RequestHandler\GuzzleRequestHandler;
 use VDB\Spider\RequestHandler\RequestHandler;
 use VDB\Spider\StatsHandler;
 use VDB\Spider\URI\FilterableURI;
+use VDB\URI\GenericURI;
 use VDB\URI\HttpURI;
 use VDB\URI\URI;
 
@@ -77,6 +83,8 @@ class Spider
     /** @var string the unique id of this spider instance */
     private $spiderId;
 
+    private $runningRequests = 0;
+
     /**
      * @param string $seed the URI to start crawling
      * @param string $spiderId
@@ -89,6 +97,13 @@ class Spider
         } else {
             $this->spiderId = md5($seed . microtime(true));
         }
+
+        // This makes the spider handle signals gracefully and allows us to do cleanup
+        declare(ticks = 1);
+        pcntl_signal(SIGTERM, array($this, 'handleSignal'));
+        pcntl_signal(SIGINT, array($this, 'handleSignal'));
+        pcntl_signal(SIGHUP, array($this, 'handleSignal'));
+        pcntl_signal(SIGQUIT, array($this, 'handleSignal'));
     }
 
     /**
@@ -265,6 +280,19 @@ class Spider
         return $this->statsHandler;
     }
 
+    public function handleSignal($signal)
+    {
+        switch ($signal) {
+            case SIGTERM:
+            case SIGKILL:
+            case SIGINT:
+            case SIGQUIT:
+                echo "\n\nCAUGHT SIGNAL. TERMINATING\n\n";
+                echo $this->statsHandler->toString();
+                exit();
+        }
+    }
+
     /**
      * @param Resource $resource
      * @return bool
@@ -323,67 +351,139 @@ class Spider
      */
     private function doCrawl()
     {
-        while (count($this->traversalQueue)) {
-            /** @var $currentURI URI */
-            $currentURI = $this->getNextURIFromQueue();
+        $loop = EventLoopFactory::create();
+        $dnsResolverFactory = new DnsResolverFactory();
+        $dnsResolver = $dnsResolverFactory->createCached('8.8.8.8', $loop);
+        $factory = new HttpClientFactory();
+        $client = $factory->create($loop, $dnsResolver);
 
-            // Fetch the document
-            if (!$resource = $this->fetchResource($currentURI)) {
-                continue;
+        while (true) {
+//            echo "\nSELECTING BATCH";
+            $nextBatchSize = 10;
+            if (count($this->traversalQueue) < 10) {
+                $nextBatchSize = count($this->traversalQueue);
             }
-
-            $this->dispatch(
-                SpiderEvents::SPIDER_CRAWL_FILTER_POSTFETCH,
-                new GenericEvent($this, array('document' => $resource))
-            );
-
-            if ($this->matchesPostfetchFilter($resource)) {
-                $this->getStatsHandler()->addToFiltered($resource);
-                continue;
-            }
-
-            // The document was not filtered, so we add it to the processing queue
-            $this->dispatch(
-                SpiderEvents::SPIDER_CRAWL_PRE_ENQUEUE,
-                new GenericEvent($this, array('document' => $resource))
-            );
-
-            $this->addToProcessQueue($resource);
-
-            $nextLevel = $this->alreadySeenURIs[$currentURI->toString()] + 1;
-            if ($nextLevel > $this->maxDepth) {
-                continue;
-            }
-
-            // Once the document is enqueued, apply the discoverers to look for more links to follow
-            $discoveredURIs = $this->executeDiscoverers($resource);
-
-            foreach ($discoveredURIs as $uri) {
-                // normalize the URI
-                $uri->normalize();
-
-                // Decorate the link to make it filterable
-                $uri = new FilterableURI($uri);
-
-                // Always skip nodes we already visited
-                if (array_key_exists($uri->toString(), $this->alreadySeenURIs)) {
-                    continue;
-                }
-
-                $this->dispatch(
-                    SpiderEvents::SPIDER_CRAWL_FILTER_PREFETCH,
-                    new GenericEvent($this, array('uri' => $uri))
-                );
-
-                if ($this->matchesPrefetchFilter($uri)) {
-                    $this->getStatsHandler()->addToFiltered($uri);
+            foreach (range(1, $nextBatchSize) as $i) {
+                /** @var $currentURI URI */
+                $currentURI = $this->getNextURIFromQueue();
+                if (null === $currentURI) {
+                    if ($this->runningRequests <= 0) {
+                        // if there is nothing in the queue, return.
+                        return;
+                    } else {
+//                        echo "\n  WAITING. Requests running: " . $this->runningRequests;;
+                        usleep(500000);
+                    }
                 } else {
-                    // The URI was not matched by any filter, mark as visited and add to queue
-                    array_push($this->traversalQueue, $uri);
+//                    echo "\n  ADDING REQUEST: " .$currentURI->toString();
+                    $this->runningRequests++;
+                    $request = $client->request('GET', $currentURI->toString());
+
+                    $request->on(
+                        'response',
+                        function ($response) use ($currentURI) {
+                            $buffer = '';
+
+                            $response->on(
+                                'data',
+                                function ($data) use (&$buffer) {
+                                    $buffer .= $data;
+                                }
+                            );
+
+                            $response->on(
+                                'end',
+                                function ($error, $response) use (&$buffer, $currentURI) {
+                                    $response = new Response($response->getCode(), $response->getHeaders(), $buffer);
+                                    $resource = new Resource($currentURI, $response);
+                                    $this->work($resource);
+                                }
+                            );
+                        }
+                    );
+                    $request->on(
+                        'end',
+                        function ($error, $response) {
+                            echo $error;
+                        }
+                    );
+
+                    $request->end();
                 }
-                $this->alreadySeenURIs[$uri->toString()] = $nextLevel;
             }
+//            echo "\nEXECUTING BATCH";
+            $loop->run();
         }
+    }
+
+    protected function work(Resource $resource)
+    {
+        $currentURI = $resource->getUri();
+
+        $this->dispatch(
+            SpiderEvents::SPIDER_CRAWL_FILTER_POSTFETCH,
+            new GenericEvent($this, array('document' => $resource))
+        );
+
+        if ($this->matchesPostfetchFilter($resource)) {
+            $this->getStatsHandler()->addToFiltered($resource);
+            // now we can set this request as not running anymore. If we did that right after request, we might be
+            // too early and stop processing too soon.
+            $this->runningRequests--;
+
+            return;
+        }
+
+        // The document was not filtered, so we add it to the processing queue
+        $this->dispatch(
+            SpiderEvents::SPIDER_CRAWL_PRE_ENQUEUE,
+            new GenericEvent($this, array('document' => $resource))
+        );
+
+        $this->addToProcessQueue($resource);
+//        echo "\n  QUEUED: " . $currentURI->toString();
+
+        $nextLevel = $this->alreadySeenURIs[$currentURI->toString()] + 1;
+        if ($nextLevel > $this->maxDepth) {
+            // now we can set this request as not running anymore. If we did that right after request, we might be
+            // too early and stop processing too soon.
+            $this->runningRequests--;
+            return;
+        }
+
+        // Once the document is enqueued, apply the discoverers to look for more links to follow
+        $discoveredURIs = $this->executeDiscoverers($resource);
+
+        foreach ($discoveredURIs as $uri) {
+            // normalize the URI
+            $uri->normalize();
+
+            // Decorate the link to make it filterable
+            $uri = new FilterableURI($uri);
+
+            // Always skip nodes we already visited
+            if (array_key_exists($uri->toString(), $this->alreadySeenURIs)) {
+                continue;
+            }
+
+            $this->dispatch(
+                SpiderEvents::SPIDER_CRAWL_FILTER_PREFETCH,
+                new GenericEvent($this, array('uri' => $uri))
+            );
+
+            if ($this->matchesPrefetchFilter($uri)) {
+                $this->getStatsHandler()->addToFiltered($uri);
+            } else {
+                // The URI was not matched by any filter, mark as visited and add to queue
+//                echo "\n    DISCOVERED: " . $uri->toString();
+                array_push($this->traversalQueue, $uri);
+            }
+            $this->alreadySeenURIs[$uri->toString()] = $nextLevel;
+        }
+
+        // now we can set this request as not running anymore. If we did that right after request, we might be
+        // too early and stop processing too soon.
+        $this->runningRequests--;
     }
 
     /**
