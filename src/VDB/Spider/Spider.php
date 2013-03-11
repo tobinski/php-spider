@@ -358,7 +358,6 @@ class Spider
         $client = $factory->create($loop, $dnsResolver);
 
         while (true) {
-//            echo "\nSELECTING BATCH";
             $nextBatchSize = 10;
             if (count($this->traversalQueue) < 10) {
                 $nextBatchSize = count($this->traversalQueue);
@@ -371,14 +370,12 @@ class Spider
                         // if there is nothing in the queue, return.
                         return;
                     } else {
-//                        echo "\n  WAITING. Requests running: " . $this->runningRequests;;
+                        // if the queue is empty, but there are running requests, wait a bit
                         usleep(500000);
                     }
                 } else {
-//                    echo "\n  ADDING REQUEST: " .$currentURI->toString();
                     $this->runningRequests++;
                     $request = $client->request('GET', $currentURI->toString());
-
                     $request->on(
                         'response',
                         function ($response) use ($currentURI) {
@@ -394,24 +391,44 @@ class Spider
                             $response->on(
                                 'end',
                                 function ($error, $response) use (&$buffer, $currentURI) {
-                                    $response = new Response($response->getCode(), $response->getHeaders(), $buffer);
-                                    $resource = new Resource($currentURI, $response);
-                                    $this->work($resource);
+                                    // check for redirect and add it as new URI on queue
+                                    if ("301" === $response->getCode() || "302" === $response->getCode()) {
+                                        $headers = $response->getHeaders();
+                                        if (!empty($headers['Location'])) {
+                                            $uri = new GenericURI($headers['Location']);
+                                            array_push($this->traversalQueue, $uri);
+
+                                            // set the URI as already seen with the same level as it was redirected from
+                                            $this->alreadySeenURIs[$uri->toString(
+                                            )] = $this->alreadySeenURIs[$currentURI->toString()];
+                                        }
+                                        $this->runningRequests--;
+                                    } else {
+                                        $response = new Response($response->getCode(), $response->getHeaders(
+                                        ), $buffer);
+                                        $resource = new Resource($currentURI, $response);
+                                        $this->work($resource);
+                                    }
                                 }
                             );
                         }
                     );
                     $request->on(
                         'end',
-                        function ($error, $response) {
-                            echo $error;
+                        function ($e) use ($currentURI) {
+                            if ($e) {
+                                /** @var $e \Exception */
+                                $this->runningRequests--;
+                                $message = ($e->getPrevious() ? $e->getPrevious()->getMessage() : $e->getMessage());
+                                $this->statsHandler->addToFailed($currentURI->toString(), $message);
+                                return;
+                            }
                         }
                     );
 
                     $request->end();
                 }
             }
-//            echo "\nEXECUTING BATCH";
             $loop->run();
         }
     }
