@@ -23,9 +23,9 @@ use VDB\Spider\RequestHandler\GuzzleRequestHandler;
 use VDB\Spider\RequestHandler\RequestHandler;
 use VDB\Spider\StatsHandler;
 use VDB\Spider\URI\FilterableURI;
-use VDB\URI\GenericURI;
-use VDB\URI\HttpURI;
-use VDB\URI\URI;
+use VDB\Uri\Uri;
+use VDB\Uri\Http;
+use VDB\Uri\UriInterface;
 
 /**
  *
@@ -395,7 +395,7 @@ class Spider
                                     // check for redirect and add it as new URI on queue
                                     if ($response->isRedirect()) {
                                         if ($response->getLocation()) {
-                                            $uri = new GenericURI($response->getLocation());
+                                            $uri = new Uri($response->getLocation());
                                             array_push($this->traversalQueue, $uri);
 
                                             // set the URI as already seen with the same level as it was redirected from
@@ -456,7 +456,6 @@ class Spider
         );
 
         $this->addToProcessQueue($resource);
-//        echo "\n  QUEUED: " . $currentURI->toString();
 
         $nextLevel = $this->alreadySeenURIs[$currentURI->toString()] + 1;
         if ($nextLevel > $this->maxDepth) {
@@ -489,8 +488,7 @@ class Spider
             if ($this->matchesPrefetchFilter($uri)) {
                 $this->getStatsHandler()->addToFiltered($uri);
             } else {
-                // The URI was not matched by any filter, mark as visited and add to queue
-//                echo "\n    DISCOVERED: " . $uri->toString();
+                // The URI was not matched by any filter, add to traversal queue
                 array_push($this->traversalQueue, $uri);
             }
             $this->alreadySeenURIs[$uri->toString()] = $nextLevel;
@@ -605,7 +603,7 @@ class Spider
      */
     private function setSeed($uri)
     {
-        $this->seed = new HttpURI($uri);
+        $this->seed = new Http($uri);
         array_push($this->traversalQueue, $this->seed);
         $this->alreadySeenURIs[$this->seed->normalize()->toString()] = 0;
     }

@@ -6,7 +6,7 @@
 
 namespace VDB\Spider;
 
-use VDB\URI\URI;
+use VDB\Uri\UriInterface;
 
 class StatsHandler
 {
