@@ -20,17 +20,11 @@
         "php": ">=5.3.0",
         "ext-curl": "*",
         "guzzle/guzzle": ">=3.0, <3.4",
-        "symfony/css-selector": "~2.1",
-        "symfony/dom-crawler": "~2.1",
-        "symfony/finder": "2.2.*@dev",
-<<<<<<< HEAD
-        "vdb/uri": "dev-master"
-=======
+        "symfony/symfony": "2.5.*",
         "vdb/uri": "0.1.*@dev"
->>>>>>> ef59b65... Change the dependency. Remove react and change the version for vdb/uri
     },
     "require-dev": {
-        "monolog/monolog": "1.4.*@dev",
+        "monolog/monolog": "1.8.*@dev",
         "doctrine/cache": "dev-master"
     },
     "autoload": {
