@@ -390,11 +390,6 @@ class Spider
                 // Decorate the link to make it filterable
                 $uri = new FilterableUri($uri);
 
-                // Always skip nodes we already visited
-                if (array_key_exists($uri->toString(), $this->alreadySeenUris)) {
-                    continue;
-                }
-
                 $this->dispatch(
                     SpiderEvents::SPIDER_CRAWL_FILTER_PREFETCH,
                     new GenericEvent($this, array('uri' => $uri))
@@ -403,6 +398,14 @@ class Spider
                 if ($this->matchesPrefetchFilter($uri)) {
                     $this->getStatsHandler()->addToFiltered($uri);
                 } else {
+                    // Register all found links
+                    $resource->setDiscoveredLink($uri);
+
+                    // Always skip nodes we already visitedfor processing
+                    if (array_key_exists($uri->toString(), $this->alreadySeenUris)) {
+                        continue;
+                    }
+
                     // The URI was not matched by any filter, mark as visited and add to queue
                     array_push($this->traversalQueue, $uri);
                 }

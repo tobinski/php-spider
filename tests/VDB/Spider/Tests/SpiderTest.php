@@ -312,4 +312,19 @@ class SpiderTest extends TestCase
         $this->assertCount(0, $stats->getQueued(), 'Queued count');
         $this->assertCount(1, $stats->getFailed(), 'Failed count');
     }
+
+    /**
+     * @covers VDB\Spider\Spider::crawl
+     */
+    public function testDiscoveredLinks () {
+        $this->spider->crawl();
+        $downloaded = $this->spider->getPersistenceHandler();
+        foreach($downloaded as $resource)
+        {
+            if($resource->getUri() == new Uri('http://php-spider.org/G'))
+            {
+                $this->assertEquals($resource->getDiscoveredLinks[0], new Uri('http://php-spider.org/C'));
+            }
+        }
+    }
 }

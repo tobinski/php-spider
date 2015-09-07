@@ -33,6 +33,12 @@ class Resource implements Filterable
     public $depthFound;
 
     /**
+     * All discovered links for a resource
+     * @var array
+     */
+    public $discoveredLinks = array();
+
+    /**
      * @param UriInterface $uri
      * @param Response $response
      */
@@ -104,6 +110,22 @@ class Resource implements Filterable
     }
 
     /**
+     *
+     * @return array
+     */
+    public function getDiscoveredLinks ()
+    {
+        return $this->discoveredLinks;
+    }
+
+    /**
+     * @param UriInterface $uri
+     */
+    public function setDiscoveredLink (UriInterface $uri)
+    {
+        $this->discoveredLinks[] = $uri;
+    }
+    /**
      * Get a unique identifier for the filterable item
      * Used for reporting
      *
@@ -131,7 +153,8 @@ class Resource implements Filterable
             'uri',
             'response',
             'body',
-            'depthFound'
+            'depthFound',
+            'discoveredLinks'
         );
     }
 
