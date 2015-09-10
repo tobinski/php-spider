@@ -1,7 +1,7 @@
 <?php
 
-namespace VDB\Spider;
-use VDB\Spider\GraphInterface;
+namespace VDB\Spider\Graph;
+use VDB\Spider\Graph\GraphInterface;
 
 class LinkGraph implements GraphInterface {
     private $adj_mat;

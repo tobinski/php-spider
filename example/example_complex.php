@@ -50,17 +50,6 @@ $spider->getDispatcher()->addListener(
     array($politenessPolicyEventListener, 'onCrawlPreRequest')
 );
 
-// We add an eventlistener to the crawler that implements a linkGraph
-$linkGraphListener = new \VDB\Spider\EventListener\LinkGraphListener(new \VDB\Spider\LinkGraph());
-$spider->getDispatcher()->addListener(
-    SpiderEvents::SPIDER_CRAWL_PRE_REQUEST,
-    array($linkGraphListener, 'onCrawlPreRequest')
-);
-
-$spider->getDispatcher()->addListener(
-    SpiderEvents::SPIDER_CRAWL_POST_FILTER,
-    array($linkGraphListener, 'onCrawlPostFilter')
-);
 
 // Let's add a CLI progress meter for fun
 echo "\nCrawling";
@@ -118,6 +107,8 @@ foreach ($downloaded as $resource) {
 }
 
 // print graph
-$seeds = $linkGraphListener->getGraph()->getChildren($seed);
-print_r($seeds);
-print_r($linkGraphListener->getGraph()->getParents($seeds[0]));
+$seeds = $spider->getGraph()->getChildren($seed);
+foreach($seeds as $link)
+{
+    echo "\n $seed -> $link";
+}

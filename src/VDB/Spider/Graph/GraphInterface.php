@@ -1,5 +1,5 @@
 <?php
-namespace VDB\Spider;
+namespace VDB\Spider\Graph;
 
 /**
  * @author Tobinski
@@ -22,4 +22,17 @@ interface GraphInterface
      * @return mixed
      */
     public function addEdge($start, $end, $directed=TRUE, $weight=1);
+
+    /**
+     * @param $name
+     * @return array
+     */
+    public function getChildren($name);
+
+    /**
+     * @param $name
+     * @return array
+     */
+    public function getParents($name);
+
 }

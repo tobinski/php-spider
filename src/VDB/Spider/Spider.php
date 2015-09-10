@@ -14,6 +14,8 @@ use VDB\Spider\Event\SpiderEvents;
 use VDB\Spider\Exception\QueueException;
 use VDB\Spider\Filter\PostFetchFilter;
 use VDB\Spider\Filter\PreFetchFilter;
+use VDB\Spider\Graph\GraphInterface;
+use VDB\Spider\Graph\LinkGraph;
 use VDB\Spider\PersistenceHandler\MemoryPersistenceHandler;
 use VDB\Spider\PersistenceHandler\PersistenceHandler;
 use VDB\Spider\RequestHandler\GuzzleRequestHandler;
@@ -79,6 +81,9 @@ class Spider
 
     /** @var string the unique id of this spider instance */
     private $spiderId;
+
+    /** @var  GraphInterface a graph of the linked resources */
+    private $graph;
 
     /**
      * @param string $seed the URI to start crawling
@@ -213,6 +218,26 @@ class Spider
         }
 
         return $this->requestHandler;
+    }
+
+    /**
+     * @param GraphInterface $graph
+     */
+    public function setGraph(GraphInterface $graph)
+    {
+        $this->graph = $graph;
+    }
+
+    /**
+     * @return GraphInterface
+     */
+    public function getGraph()
+    {
+        if (!$this->graph) {
+            $this->graph = new LinkGraph();
+        }
+
+        return $this->graph;
     }
 
     /**
@@ -357,10 +382,14 @@ class Spider
                 continue;
             }
 
+            // add node to graph
+            $this->getGraph()->addNode($currentUri->toString());
+
             $this->dispatch(
                 SpiderEvents::SPIDER_CRAWL_FILTER_POSTFETCH,
                 new GenericEvent($this, array('document' => $resource))
             );
+
 
             if ($this->matchesPostfetchFilter($resource)) {
                 $this->getStatsHandler()->addToFiltered($resource);
@@ -398,7 +427,9 @@ class Spider
                 if ($this->matchesPrefetchFilter($uri)) {
                     $this->getStatsHandler()->addToFiltered($uri);
                 } else {
-
+                    // build graph
+                    $this->getGraph()->addNode($uri->toString());
+                    $this->getGraph()->addEdge($currentUri->toString(), $uri->toString());
 
                     $this->dispatch(
                         SpiderEvents::SPIDER_CRAWL_POST_FILTER,
