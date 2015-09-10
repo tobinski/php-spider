@@ -21,6 +21,14 @@ final class SpiderEvents
     const SPIDER_CRAWL_FILTER_PREFETCH = 'spider.crawl.filter.prefetch';
 
     /**
+     * The spider.crawl.post_filter event fires when the URI is filtered
+     *
+     * The event listener receives an
+     * VDB\Spider\Subscriber\CrawlPostFilterEvent instance.
+     */
+    const SPIDER_CRAWL_POST_FILTER = 'spider.crawl.post_filter';
+
+    /**
      * The spider.crawl.filter.postfetch event fires when the Resource is already fetched and is not yet filtered
      *
      * The event listener receives an

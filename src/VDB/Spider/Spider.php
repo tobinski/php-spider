@@ -398,6 +398,13 @@ class Spider
                 if ($this->matchesPrefetchFilter($uri)) {
                     $this->getStatsHandler()->addToFiltered($uri);
                 } else {
+
+
+                    $this->dispatch(
+                        SpiderEvents::SPIDER_CRAWL_POST_FILTER,
+                        new GenericEvent($this, array('uri' => $uri))
+                    );
+
                     // Register all found links
                     $resource->setDiscoveredLink($uri);
 
