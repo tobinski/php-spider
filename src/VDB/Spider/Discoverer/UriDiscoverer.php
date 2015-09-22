@@ -63,7 +63,7 @@ class UriDiscoverer implements Discoverer
             {
                 $result[] = new Uri($uri->toString().$this->modifier[$uri->getHost()]);
             }
-            else{
+            else {
                 $result[] = $uri;
             }
         }

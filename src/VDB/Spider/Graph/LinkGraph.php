@@ -227,7 +227,8 @@ class LinkGraph implements GraphInterface {
     public function  getRoot()
     {
         $array =  array_keys($this->adj_mat);
-        return $array[0];
+        if(isset($array[0])) return $array[0];
+        return false;
     }
 
     /**
